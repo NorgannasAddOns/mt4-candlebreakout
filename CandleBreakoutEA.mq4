@@ -1,12 +1,15 @@
 //+------------------------------------------------------------------+
-//|                                              CandleBreakdown.mq4 |
+//|                                             CandleBreakoutEA.mq4 |
 //|                        Copyright 2016, Norganna's AddOns Pty Ltd |
-//|                                         https://www.norganna.com |
+//|                                          http://www.norganna.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2016, Norganna's AddOns Pty Ltd"
-#property link      "https://www.norganna.com"
+#property link      "http://www.norganna.com"
 #property version   "1.00"
 #property strict
+#property description "Companion EA for the CandleBreakout indicator."
+#property description "This EA takes care of placing the pending orders"
+#property description "manually initiated from the indicator's UI."
 
 struct Order {
 	string symbol;
