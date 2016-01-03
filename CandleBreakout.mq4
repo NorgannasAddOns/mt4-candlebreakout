@@ -7,6 +7,14 @@
 #property link      "http://www.norganna.com"
 #property version   "1.02"
 #property strict
+#property description "This indicator identifies channels and pricing"
+#property description "points in your charts based off the teachings"
+#property description "of Janna FX and her No signals, No indicators"
+#property description "trading system. http://jannafx.com"
+#property description "It comes with an (optional) companion EA which"
+#property description "if enabled will allow you to place orders from"
+#property description "the chart."
+
 #property indicator_chart_window
 #property indicator_buffers 10
 #property indicator_plots   10
