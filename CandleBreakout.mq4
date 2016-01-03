@@ -85,10 +85,10 @@ string buttonName = "Candle focus";
 
 input int inpPeriod = 20; // Channel period
 input int inpDuration = 10; // Minimum event duration
-input double inpBuy = 2; // Buy point
-input double inpProfit = 1; // Profit amount
-input double inpStop = 2.5; // Stop sell point
-input double inpMaxSpread = 0.5; // Maximum spread for consideration
+input double inpBuy = 0.002; // Buy point
+input double inpProfit = 0.001; // Profit amount
+input double inpStop = 0.003; // Stop sell point
+input double inpMaxSpread = 0.005; // Maximum spread for consideration
 input double inpLots = 1.0; // Order size in lots
 
 double         UpperBuffer[];
