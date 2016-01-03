@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                               CandleBreakout.mq4 |
-//|                        Copyright 2016, MetaQuotes Software Corp. |
-//|                                             https://www.mql5.com |
+//|                       Copyright 2016, Norganna's AddOns Pty Ltd. |
+//|                                          http://www.norganna.com |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2016, Norganna's AddOns Pty Ltd."
-#property link      "https://www.norganna.com"
+#property link      "http://www.norganna.com"
 #property version   "1.02"
 #property strict
 #property indicator_chart_window
