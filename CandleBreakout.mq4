@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2016, Norganna's AddOns Pty Ltd."
 #property link      "http://www.norganna.com"
-#property version   "1.02"
+#property version   "1.03"
 #property strict
 #property description "This indicator identifies channels and pricing"
 #property description "points in your charts based off the teachings"
@@ -70,26 +70,28 @@
 
 #property indicator_label9  "Max extent"
 #property indicator_type9   DRAW_LINE
-#property indicator_color9  clrCadetBlue
+#property indicator_color9  clrBlueViolet
 #property indicator_style9  STYLE_SOLID
 #property indicator_width9  1
 
 #property indicator_label10  "Min extent"
 #property indicator_type10   DRAW_LINE
-#property indicator_color10  clrCadetBlue
+#property indicator_color10  clrBlueViolet
 #property indicator_style10  STYLE_SOLID
 #property indicator_width10  1
 
 
 string buttonName = "Candle focus";
 
-input int inpPeriod = 20; // Channel period
+input int inpPeriod = 30; // Channel period
 input int inpDuration = 10; // Minimum event duration
 input double inpBuy = 0.002; // Buy point
 input double inpProfit = 0.001; // Profit amount
 input double inpStop = 0.003; // Stop sell point
-input double inpMaxSpread = 0.005; // Maximum spread for consideration
-input double inpLots = 1.0; // Order size in lots
+input double inpMaxSpread = 0.0035; // Maximum spread for consideration
+input bool inpSmooth = false; // Smooth candles
+input int inpSmoothPeriod = 3; // Smooth period
+input double inpLots = 0.01; // Order size in lots
 
 double         UpperBuffer[];
 double         LowerBuffer[];
@@ -102,6 +104,7 @@ double         LowerProfitBuffer[];
 double         UpperStopBuffer[];
 double         LowerStopBuffer[];
 
+color bg;
 
 int OnInit() {
 	SetIndexBuffer(0,UpperBuffer);
@@ -117,6 +120,12 @@ int OnInit() {
 	SetIndexBuffer(6,LowerStopBuffer);
 	SetIndexBuffer(7,LowerProfitBuffer);
 
+	bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND, 0);
+	if (!inpSmooth) {
+		IndicatorSetInteger(INDICATOR_LEVELCOLOR, 8, bg);
+		IndicatorSetInteger(INDICATOR_LEVELCOLOR, 9, bg);
+	}
+
 	makeBox("Backdrop", 5, 5, 115, 65);
 	makeButton("Focus button", "Focus", 10, 10, 50, 20);
 	makeButton("Place button", "Place", 65, 10, 50, 20);
@@ -129,8 +138,10 @@ int OnInit() {
 void OnDeinit(const int reason) {
 	clearDialog();
 	removeObjects();
-	removeLine("Extent");
-	removeLine("Focus");
+	ObjectDelete("Extent");
+	ObjectDelete("Focus");
+	ObjectDelete("FocusBuy");
+	ObjectDelete("FocusSell");
 }
 
 void removeObjects() {
@@ -141,25 +152,39 @@ void removeObjects() {
 	ObjectDelete("Sell text");
 }
 
-void removeLine(const string name) {
-	ObjectDelete(name);
-}
-
-void drawLine(
+void drawVLine(
 		const string name,
 		const int pos,
 		const color lineColor = clrCadetBlue,
 		const int lineStyle = STYLE_DASH,
 		const int lineWidth = 1
 ) {
-	removeLine(name);
+	ObjectDelete(name);
 
 	if (pos > 0) {
 		ObjectCreate(name, OBJ_VLINE, 0, iTime(NULL, 0, pos), 0);
 		ObjectSet(name, OBJPROP_STYLE, lineStyle);
 		ObjectSet(name, OBJPROP_COLOR, lineColor);
 		ObjectSet(name, OBJPROP_WIDTH, lineWidth);
-		ObjectSet(name, OBJPROP_BACK, 1);
+		ObjectSet(name, OBJPROP_BACK, true);
+	}
+}
+
+void drawHLine(
+		const string name,
+		const double price,
+		const color lineColor = clrCadetBlue,
+		const int lineStyle = STYLE_DASH,
+		const int lineWidth = 1
+) {
+	ObjectDelete(name);
+
+	if (price > 0) {
+		ObjectCreate(name, OBJ_HLINE, 0, 0, price);
+		ObjectSet(name, OBJPROP_STYLE, lineStyle);
+		ObjectSet(name, OBJPROP_COLOR, lineColor);
+		ObjectSet(name, OBJPROP_WIDTH, lineWidth);
+		ObjectSet(name, OBJPROP_BACK, true);
 	}
 }
 
@@ -280,6 +305,7 @@ void makeText(
 	ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
 	ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
 	ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
+	ObjectSetInteger(0, name, OBJPROP_ZORDER, 20);
 	ObjectSetText(name, title, size, "Arial", clr);
 }
 
@@ -313,6 +339,7 @@ void makeBox(
 	ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
 	ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
 	ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
+	ObjectSetInteger(0, name, OBJPROP_ZORDER, 10);
 }
    
 int OnCalculate(const int rates_total,
@@ -338,9 +365,48 @@ int OnCalculate(const int rates_total,
 	cl = 0;
 
 	int limit = rates_total - prev_calculated + inpPeriod * 2;
+	if (limit > rates_total) limit = rates_total;
 
-	if (limit > rates_total) {
-		limit = rates_total;
+	int count = 0;
+	double hsum = 0;
+	double lsum = 0;
+	double hpos = 0;
+	double lpos = 0;
+	double hval = 0;
+	double lval = 0;
+	for (i = 0; i < limit; i++) {
+		if (inpSmooth) {
+			pos = i - inpSmoothPeriod;
+
+			hsum += high[i];
+			lsum += low[i];
+			count++;
+
+			if (pos >= 0) {
+				hpos = high[pos];
+				lpos = low[pos];
+
+				hval = NormalizeDouble(hsum / count, Digits);
+				lval = NormalizeDouble(lsum / count, Digits);
+
+				UpperExtBuffer[pos] = hval;
+				LowerExtBuffer[pos] = lval;
+			}
+
+			pos = i - (2 * inpSmoothPeriod) - 1;
+
+			if (pos >= 0) {
+				hsum -= high[pos];
+				lsum -= low[pos];
+				count--;
+			}
+		} else {
+			double o = open[i];
+			double c = close[i];
+
+			UpperExtBuffer[i] = MathMax(o, c);
+			LowerExtBuffer[i] = MathMin(o, c);
+		}
 	}
 
 	for (i = 0; i < limit; i++) {
@@ -352,13 +418,8 @@ int OnCalculate(const int rates_total,
 		max = -1;
 		min = -1;
 		for (pos = i; pos < s; pos++) {
-			if (open[pos] > close[pos]) {
-				h = open[pos];
-				l = close[pos];
-			} else {
-				l = open[pos];
-				h = close[pos];
-			}
+			h = UpperExtBuffer[pos];
+			l = LowerExtBuffer[pos];
 
 			if (pos == i) {
 				ch = h;
@@ -375,8 +436,8 @@ int OnCalculate(const int rates_total,
 
 		UpperBuffer[i] = max;
 		LowerBuffer[i] = min;
-		UpperExtBuffer[s - 1] = max;
-		LowerExtBuffer[s - 1] = min;
+		//UpperExtBuffer[s - 1] = max;
+		//LowerExtBuffer[s - 1] = min;
 
 		mmspread = max - min;
 		if (mmspread > inpMaxSpread) {
@@ -400,8 +461,8 @@ int OnCalculate(const int rates_total,
 			cmax = max;
 		} else {
 			if (i < inpPeriod) {
-				UpperExtBuffer[i] = cmax;
-				LowerExtBuffer[i] = cmin; 
+				//UpperExtBuffer[i] = cmax;
+				//LowerExtBuffer[i] = cmin; 
 			}
 
 			if (extent == 0 && (cl < cmin || ch > cmax)) {
@@ -434,8 +495,7 @@ int OnCalculate(const int rates_total,
 		}
 	}
 
-
-	drawLine("Extent", extent);
+	drawVLine("Extent", extent);
 	updatePrices();
 
 	return(rates_total);
@@ -457,14 +517,29 @@ void updatePrices() {
 		placeTime = NULL;
 	}
 
-	if (pos == 0) {
-		removeLine("Focus");
-	} else {
-		drawLine("Focus", pos, clrLightSteelBlue, STYLE_SOLID, 5);
-	}
-
 	double buy = UpperBuyBuffer[pos];
 	double sell = LowerBuyBuffer[pos];
+
+	if (pos == 0) {
+		ObjectDelete("Focus");
+		ObjectDelete("FocusBuy");
+		ObjectDelete("FocusSell");
+	} else {
+		if (ObjectFind("Focus") < 0) {
+			if (buy == EMPTY_VALUE) {
+				buy = UpperBuffer[pos] + inpBuy;
+				sell = LowerBuffer[pos] - inpBuy;
+			}
+
+			drawHLine("FocusBuy", buy, clrLightSteelBlue, STYLE_SOLID, 5);
+			drawHLine("FocusSell", sell, clrLightSteelBlue, STYLE_SOLID, 5);
+		}
+
+		drawVLine("Focus", pos, clrLightSteelBlue, STYLE_SOLID, 5);
+
+		buy = ObjectGetDouble(0, "FocusBuy", OBJPROP_PRICE1);
+		sell = ObjectGetDouble(0, "FocusSell", OBJPROP_PRICE1);
+	}
 
 	if (buy == EMPTY_VALUE) {
 		setText("Buy text", "No buy");
@@ -487,18 +562,41 @@ void placeOrders() {
 		}
 	}
 
-	double buy = NormalizeDouble(UpperBuyBuffer[pos], Digits);
-	double buyTake = NormalizeDouble(UpperProfitBuffer[pos], Digits);
-	double buyStop = NormalizeDouble(UpperStopBuffer[pos], Digits);
-	double sell = NormalizeDouble(LowerBuyBuffer[pos], Digits);
-	double sellTake = NormalizeDouble(LowerProfitBuffer[pos], Digits);
-	double sellStop = NormalizeDouble(LowerStopBuffer[pos], Digits);
+	double buy = 0;
+	double buyTake = 0;
+	double buyStop = 0;
+	double sell = 0;
+	double sellTake = 0;
+	double sellStop = 0;
 
-	if (buy == EMPTY_VALUE) {
+	if (pos > 0) {
+		buy = ObjectGetDouble(0, "FocusBuy", OBJPROP_PRICE1);
+		buyTake = buy + inpProfit;
+		buyStop = buy - inpStop;
+		sell = ObjectGetDouble(0, "FocusSell", OBJPROP_PRICE1);
+		sellTake = sell - inpProfit;
+		sellStop = sell + inpStop;
+	} else {
+		buy = UpperBuyBuffer[pos];
+		buyTake = UpperProfitBuffer[pos];
+		buyStop = UpperStopBuffer[pos];
+		sell = LowerBuyBuffer[pos];
+		sellTake = LowerProfitBuffer[pos];
+		sellStop = LowerStopBuffer[pos];
+	}
+
+	if (buy == EMPTY_VALUE || buy <= 0) {
 		Alert("There is no price at current time");
 		setButtonPressed("Place button", false);
 		return;
 	}
+
+	buy = NormalizeDouble(buy, Digits);
+	buyTake = NormalizeDouble(buyTake, Digits);
+	buyStop = NormalizeDouble(buyStop, Digits);
+	sell = NormalizeDouble(sell, Digits);
+	sellTake = NormalizeDouble(sellTake, Digits);
+	sellStop = NormalizeDouble(sellStop, Digits);
 
 	string symbol = Symbol();
 	double freeMargin = AccountFreeMargin();
@@ -573,5 +671,8 @@ void OnChartEvent(const int id,         // Event ID
 			placeTime = dt;
 			updatePrices();
 		}
+	}
+	else if (id == CHARTEVENT_OBJECT_DRAG && (sparam == "FocusBuy" || sparam == "FocusSell")) {
+		updatePrices();
 	}
 }
